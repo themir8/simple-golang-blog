@@ -7,6 +7,8 @@ import (
 	"os"
 	"text/template"
 
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 
@@ -22,6 +24,7 @@ var posts = []Article{}
 var showPost = Article{}
 
 func index(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.URL)
 	t, err := template.ParseFiles(
 		"templates/index.html",
 		"templates/header.html",
@@ -54,6 +57,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 
 func create(w http.ResponseWriter, r *http.Request) {
+	// URI := r.RequestURI
 	t, err := template.ParseFiles(
 		"templates/create.html",
 		"templates/header.html",
@@ -74,15 +78,23 @@ func save_article(w http.ResponseWriter, r *http.Request) {
 	if title == "" || anons == "" || full_text == "" {
 		fmt.Fprintf(w, "Hammasini toldir dal**yob")
 	} else {
-		db, err := sqlx.Connect("postgres", os.Getenv("DATABASE_URL"))
-		if err != nil {
-			log.Fatalln(err, " Bla Bla1")
-		}
+		// db, err := sqlx.Connect("postgres", os.Getenv("DATABASE_URL"))
+		// if err != nil {
+		// 	log.Fatalln(err, " Bla Bla1")
+		// }
+		// defer db.Close()
+
+		var db, _ = gorm.Open("sqlite3", "./gorm.db")
 		defer db.Close()
 
-		tx := db.MustBegin()
-		tx.MustExec("INSERT INTO simpleGolangBlog(title, anons, full_text) values($1, $2, $3)", title, anons, full_text)
-		tx.Commit()
+		// db.AutoMigrate(&Article{})
+
+		el := Article{Title: title, Anons: anons, FullText: full_text}
+
+		db.Create(&el)
+		// tx := db.MustBegin()
+		// tx.MustExec("INSERT INTO simpleGolangBlog(title, anons, full_text) values($1, $2, $3)", title, anons, full_text)
+		// tx.Commit()
 
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
@@ -91,6 +103,7 @@ func save_article(w http.ResponseWriter, r *http.Request) {
 
 func post_detail(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+	// fmt.Println(vars["id"])
 	t, err := template.ParseFiles(
 		"templates/post.html",
 		"templates/header.html",
@@ -120,6 +133,41 @@ func post_detail(w http.ResponseWriter, r *http.Request) {
 	t.ExecuteTemplate(w, "post_detail", showPost)
 }
 
+func post_delete(w http.ResponseWriter, r *http.Request) {
+	var err error
+	db, err := sqlx.Connect("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatalln(err, " Bla Bla1")
+	}
+	defer db.Close()
+
+	vars := mux.Vars(r)
+
+	// tx, err := db.Begin()
+	// _, err = tx.Exec("DELETE FROM simpleGolangBlog WHERE id=%s", vars["id"])
+	// err = tx.Commit()
+	// http.Redirect(w, r, "/", http.StatusSeeOther)
+
+	// URI := r.RequestURI[6:][:1]
+	// fmt.Println(URI)
+
+	// rows, _ := db.Queryx(fmt.Sprintf("DELETE FROM simpleGolangBlog WHERE id=%s", URI))
+	tx := db.MustBegin()
+	tx.MustExec("DELETE FROM simpleGolangBlog WHERE id=%s", vars["id"])
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	tx.Commit()
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+
+	// if err := db.MustExec("DELETE FROM simpleGolangBlog WHERE id=%s", vars["id"]); err == nil {
+	// 	tx.Commit()
+	// 	http.Redirect(w, r, "/", http.StatusSeeOther)
+	// } else {
+	// 	log.Println(err)
+	// }
+}
+
 func handleFunc() {
 
 	r := mux.NewRouter()
@@ -127,7 +175,9 @@ func handleFunc() {
 	r.HandleFunc("/create/", create).Methods("GET")
 	r.HandleFunc("/save_article/", save_article).Methods("POST")
 	r.HandleFunc("/post/{id:[0-9]+}/", post_detail).Methods("GET")
+	r.HandleFunc("/delete/{id:[0-9]+}/", post_delete).Methods("GET")
 
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 	http.Handle("/", r)
 
 	log.Println("Server running")
@@ -135,5 +185,9 @@ func handleFunc() {
 }
 
 func main() {
+	db, _ := gorm.Open("sqlite3", "./gorm.db")
+	defer db.Close()
+
+	db.AutoMigrate(&Article{})
 	handleFunc()
 }
